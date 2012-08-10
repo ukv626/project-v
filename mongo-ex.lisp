@@ -65,46 +65,42 @@
            (date-time second minute hour day month year)))))
 
 (defun request-add (login &key text desc type tags people skills dates)
-  (let ((cl-mongo::*mongo-registry* nil))
-    (with-mongo-connection (:db "test")
-      (let ((doc (make-document))
-            (userid (cl-mongo::make-bson-oid
-                     :oid (doc-id (first (docs (db.find "users"
-                                                        (kv "login" login))))))))
-        (add-element "userid" userid doc)
-        (add-element "login" login doc)
-        (multiple-value-bind
-              (second minute hour day month year)
-            (get-decoded-time)
-          (add-element "date" (date-time second minute hour day month year) doc))
-        (add-element "text" text doc)
-        (add-element "desc" desc doc)
-        (add-element "type" type doc)
-        (if (not (null tags))
-            (add-element "tags" tags doc))
-        (if (not (null people))
-            (add-element "people" people doc))
-        (if (not (null skills))
-            (add-element "skills" skills doc))
-        (if (not (null dates))
-            (add-element "dates"
-                         (loop for cur-date in dates
-                            for doc-date = (kv (kv :start (getf cur-date :start))
-                                               (kv :finish (getf cur-date :finish)))
-                            collect doc-date) doc))
-        (db.insert "requests" doc)
-        (log-add login
-                 (format nil "Участник \"~A\" добавил заявку \"~A\""
-                         login text))))))
+  (let ((doc (make-document))
+        (userid (cl-mongo::make-bson-oid
+                 :oid (doc-id (first (docs (db.find "users"
+                                                    (kv "login" login))))))))
+    (add-element "userid" userid doc)
+    (add-element "login" login doc)
+    (multiple-value-bind
+          (second minute hour day month year)
+        (get-decoded-time)
+      (add-element "date" (date-time second minute hour day month year) doc))
+    (add-element "text" text doc)
+    (add-element "desc" desc doc)
+    (add-element "type" type doc)
+    (if (not (null tags))
+        (add-element "tags" tags doc))
+    (if (not (null people))
+        (add-element "people" people doc))
+    (if (not (null skills))
+        (add-element "skills" skills doc))
+    (if (not (null dates))
+        (add-element "dates"
+                     (loop for cur-date in dates
+                        for doc-date = (kv (kv :start (getf cur-date :start))
+                                           (kv :finish (getf cur-date :finish)))
+                        collect doc-date) doc))
+    (db.insert "requests" doc)
+    (log-add login
+             (format nil "Участник \"~A\" добавил заявку \"~A\""
+                     login text))))
 
 (defun request-by-id (id)
   (car (docs (iter (db.find "requests" (kv "_id"  (cl-mongo::make-bson-oid :oid (mongoid:oid id))))))))
 
 (defun requests-by-user (user-login)
-  (let ((cl-mongo::*mongo-registry* nil))
-    (with-mongo-connection (:db "test")
-      (docs (iter (db.find "requests" (kv "login" user-login)
-                           :limit 0))))))
+  (docs (iter (db.find "requests" (kv "login" user-login)
+                       :limit 0))))
 
 (defun requests-by-user-hobbies (user-login)
   (let ((user (car (docs (iter (db.find "users" (kv "login" user-login)
@@ -170,18 +166,16 @@
     (db.insert "logs" doc)))
 
 (defun logs-by-user (login)
-  (let ((cl-mongo::*mongo-registry* nil))
-    (with-mongo-connection (:db "test")
-    (let ((user (car (docs (iter (db.find "users" (kv "login" login)
-                                          :limit 0))))))
-      (when user
-        (let ((friends (get-element "friends" user)))
-          (when friends
-            ;; TODO: check if db.find returns nil
-              (docs (iter
-                      (db.find "logs" ($in "login"
-                                           (append (list login) friends))
-                               :limit 0))))))))))
+  (let ((user (car (docs (iter (db.find "users" (kv "login" login)
+                                        :limit 0))))))
+    (when user
+      (let ((friends (get-element "friends" user)))
+        (when friends
+          ;; TODO: check if db.find returns nil
+          (docs (iter
+                  (db.find "logs" ($in "login"
+                                       (append (list login) friends))
+                           :limit 0))))))))
 
 (defun show-result (collection kv)
   (let ((results

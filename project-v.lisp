@@ -50,11 +50,13 @@
 
 
 (define-url-fn (login)
-    (cond ((eq (request-method *request*) :GET)
-           (login-form))
-          ((eq (request-method *request*) :POST)
-           (let ((login (parameter "login"))
-                 (password (parameter "password")))
+  (cond ((eq (request-method *request*) :GET)
+         (login-form))
+        ((eq (request-method *request*) :POST)
+         (let ((login (parameter "login"))
+               (password (parameter "password"))
+               (cl-mongo::*mongo-registry* nil))
+           (with-mongo-connection (:db "test")
              (let ((user (user-by-login-password login password)))
                (cond (user
                       (setf (session-value :user)
@@ -62,15 +64,17 @@
                                   (get-element "firstname" user)))
                       (with-output-to-string (stream)
                         (json:encode-json-plist (list :auth t) stream)))
-                      ;;(redirect "/index"))
+                     ;;(redirect "/index"))
                      (t
                       (with-output-to-string (stream)
-                        (json:encode-json-plist (list :auth nil) stream) ))))))))
+                        (json:encode-json-plist (list :auth nil) stream))))))))))
 
 (defmacro with-http-authentication (&rest body)
   `(let ((user-details (session-value :user)))
      (cond (user-details
-            ,@body)
+            (let ((cl-mongo::*mongo-registry* nil))
+              (with-mongo-connection (:db "test")
+                ,@body)))
            (t (redirect "/login")))))
 
 
@@ -182,33 +186,29 @@
 
 
 (define-url-fn (lenta.json)
-  (let ((user-details (session-value :user)))
-    (cond (user-details
-           (setf (content-type*) "application/json")
-           (with-output-to-string (stream)
-             (json:encode-json (logs-by-user (first user-details)) stream)))
-           (t (setf (return-code*) +http-authorization-required+)))))
-
-(define-url-fn (lenta2.json)
-  (setf (content-type*) "application/json")
-  (with-output-to-string (stream)
-    (json:encode-json (logs-by-user "ukv") stream)))
-
+  (with-http-authentication
+      (let ((user-details (session-value :user)))
+        (cond (user-details
+               (setf (content-type*) "application/json")
+               (with-output-to-string (stream)
+                 (json:encode-json (logs-by-user (first user-details)) stream)))
+              (t (setf (return-code*) +http-authorization-required+))))))
 
 (define-url-fn (request.json)
-    (let ((user-details (session-value :user)))
-      (cond (user-details
-             (setf (content-type*) "application/json")
-             (with-output-to-string (stream)
-             (cond ((eq (request-method *request*) :GET)
-                    (let ((id (get-parameter "id")))
-                      (cond (id (json:encode-json (request-by-id id) stream))
-                            (t  (json:encode-json (requests-by-user
-                                                   (first user-details))
-                                                  stream)))))
-                   ((eq (request-method *request*) :POST)
-                    (json:encode-json-plist (list :post t) stream)))))
-            (t (setf (return-code*) +http-authorization-required+)))))
+  (with-http-authentication
+      (let ((user-details (session-value :user)))
+        (cond (user-details
+               (setf (content-type*) "application/json")
+               (with-output-to-string (stream)
+                 (cond ((eq (request-method *request*) :GET)
+                        (let ((id (get-parameter "id")))
+                          (cond (id (json:encode-json (request-by-id id) stream))
+                                (t  (json:encode-json (requests-by-user
+                                                       (first user-details))
+                                                      stream)))))
+                       ((eq (request-method *request*) :POST)
+                        (json:encode-json-plist (list :post t) stream)))))
+              (t (setf (return-code*) +http-authorization-required+))))))
 
   ;; (standard-page (:title "Login")
   ;;   (:h2 "Sign In")
